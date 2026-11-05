@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StraitsX PayNow QR — Render · Scan · Decode</title>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #181b22; --border: #2a2f3a; --text: #e6e8ec;
+    --muted: #8b93a1; --accent: #4f8cff; --ok: #3ecf8e; --warn: #f0b429; --err: #ff5c5c;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.5; }
+  header { padding: 20px 24px; border-bottom: 1px solid var(--border); }
+  header h1 { margin: 0; font-size: 18px; }
+  header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+  main { max-width: 900px; margin: 0 auto; padding: 24px; display: grid; gap: 20px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 20px; }
+  .card h2 { margin: 0 0 4px; font-size: 15px; }
+  .card h2 .num { display: inline-block; width: 22px; height: 22px; line-height: 22px;
+    text-align: center; background: var(--accent); color: #fff; border-radius: 50%; font-size: 12px; margin-right: 8px; }
+  .card .hint { color: var(--muted); font-size: 12px; margin: 0 0 16px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 4px; }
+  input, textarea, select { width: 100%; background: #0f1115; border: 1px solid var(--border);
+    color: var(--text); border-radius: 6px; padding: 8px 10px; font-size: 13px; font-family: var(--mono); }
+  textarea { resize: vertical; min-height: 60px; }
+  button { background: var(--accent); color: #fff; border: 0; border-radius: 6px;
+    padding: 9px 16px; font-size: 13px; font-weight: 600; cursor: pointer; margin-top: 14px; margin-right: 8px;
+    transition: transform .08s ease, background-color .2s ease, opacity .2s ease; }
+  button.secondary { background: #2a2f3a; }
+  button:hover { opacity: .9; }
+  button:active { transform: translateY(1px); }
+  button[disabled] { cursor: default; opacity: .7; }
+  button.working { opacity: .7; }
+  button.flash-ok { background: var(--ok) !important; }
+  button.flash-err { background: var(--err) !important; }
+  /* Top-right hovering toast notifications */
+  #toasts { position: fixed; top: 16px; right: 16px; z-index: 9999;
+    display: flex; flex-direction: column; align-items: flex-end; gap: 10px;
+    width: 300px; pointer-events: none; }
+  .toast { box-sizing: border-box; pointer-events: auto; display: flex; align-items: flex-start; gap: 10px;
+    width: 300px;
+    background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--muted);
+    border-radius: 8px; padding: 12px 14px; font-size: 13px; color: var(--text);
+    box-shadow: 0 6px 20px rgba(0,0,0,.4);
+    /* Geometry (box-sizing, width, padding, border incl. 3px left accent) is set
+       on the base class so it's final from frame 1. Only transform + opacity are
+       animated — never box-size properties. */
+    opacity: 0; transform: translateX(16px);
+    transition: transform .22s ease, opacity .22s ease; }
+  .toast.show { opacity: 1; transform: none; }
+  .toast.hide { opacity: 0; transform: translateX(16px); }
+  .toast.ok { border-left-color: var(--ok); }
+  .toast.err { border-left-color: var(--err); }
+  .toast.info { border-left-color: var(--accent); }
+  .toast .tmsg { flex: 1; word-break: break-word; }
+  .toast.ok .tmsg { color: var(--ok); }
+  .toast.err .tmsg { color: var(--err); }
+  .toast .tx { background: none; border: 0; color: var(--muted); cursor: pointer;
+    font-size: 15px; line-height: 1; padding: 0; margin: 0; font-weight: 700; transition: color .15s ease; }
+  .toast .tx:hover { color: var(--text); opacity: 1; }
+  .qr-out { margin-top: 16px; text-align: center; }
+  .qr-out img, .qr-out canvas { max-width: 300px; background: #fff; padding: 10px; border-radius: 8px; }
+  .qr-out .dl { display: block; margin-top: 10px; font-size: 12px; }
+  /* Download control styled as an app button (secondary variant) */
+  .qr-out a.dl-btn { display: inline-block; margin-top: 12px; background: #2a2f3a; color: #fff;
+    border: 0; border-radius: 6px; padding: 9px 16px; font-size: 13px; font-weight: 600;
+    cursor: pointer; text-decoration: none;
+    transition: transform .08s ease, background-color .2s ease, opacity .2s ease; }
+  .qr-out a.dl-btn:hover { opacity: .9; }
+  .qr-out a.dl-btn:active { transform: translateY(1px); }
+  /* Banking-app style receipt + side-by-side TLV layout (Change B + E) */
+  .decoded { display: flex; gap: 16px; align-items: flex-start; margin-top: 16px; }
+  .decoded > #receiptOut { flex: 0 0 auto; width: 420px; max-width: 100%; }
+  .decoded > #tlvWrap { flex: 1 1 0; min-width: 0; margin-top: 0; }
+  .decoded #tlvWrap .tlv-scroll { overflow-x: auto; }
+  .receipt { background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
+    overflow: hidden; max-width: 420px; margin: 0 auto; box-shadow: 0 8px 24px rgba(0,0,0,.35); }
+  .receipt .scanbar { display: flex; align-items: center; gap: 8px; padding: 8px 16px;
+    background: rgba(79,140,255,.08); border-bottom: 1px solid var(--border);
+    font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
+  .receipt .scanbar .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+  .receipt .top { background: linear-gradient(140deg, #3a2f78 0%, #4f8cff 100%);
+    padding: 20px 18px; position: relative; border-bottom: 1px solid rgba(255,255,255,.12); }
+  .receipt .top .brand { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: .5px;
+    text-transform: uppercase; color: #fff; background: rgba(255,255,255,.18);
+    padding: 2px 8px; border-radius: 999px; margin-bottom: 12px; }
+  .receipt .top .label { font-size: 11px; color: rgba(255,255,255,.75); text-transform: uppercase; letter-spacing: .6px; }
+  .receipt .top .payee { font-size: 18px; font-weight: 700; color: #fff; margin-top: 3px; }
+  .receipt .top .amount { font-size: 30px; font-weight: 800; color: #fff; margin-top: 10px; letter-spacing: -.5px; }
+  .receipt .rows { padding: 6px 18px 14px; }
+  .receipt .r { display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+    padding: 11px 6px; border-bottom: 1px solid var(--border); font-size: 13px; border-radius: 6px;
+    transition: background-color .12s ease; }
+  .receipt .r:hover { background: rgba(255,255,255,.03); }
+  .receipt .r:last-child { border-bottom: 0; }
+  .receipt .r .k { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .3px; white-space: nowrap; }
+  .receipt .r .v { font-family: var(--mono); text-align: right; word-break: break-all; color: var(--text); }
+  .flag { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 4px; margin-left: 6px; vertical-align: middle; }
+  .flag.ok { background: rgba(62,207,142,.15); color: var(--ok); }
+  .flag.warn { background: rgba(240,180,41,.15); color: var(--warn); }
+  .tlv-title { color: var(--muted); font-size: 12px; margin-top: 0; }
+  .tlv { width: 100%; border-collapse: collapse; font-size: 12px; font-family: var(--mono); margin-top: 10px; }
+  .tlv td { padding: 5px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .tlv td.tag { color: var(--accent); }
+  .tlv td.sub { color: var(--muted); }
+  /* Info marker on TLV field labels — subtle muted circle-i, accent on hover/focus.
+     The popup itself is a single body-level fixed element (#tlv-tooltip) so it
+     can never be clipped by the .tlv-scroll horizontal-overflow container. */
+  .tlv-info { display: inline-flex; align-items: center; justify-content: center;
+    width: 14px; height: 14px; margin-left: 6px; border-radius: 50%; cursor: help;
+    color: var(--muted); font-size: 11px; font-style: normal; line-height: 1;
+    vertical-align: middle; outline: none;
+    transition: color .15s ease; }
+  .tlv-info:hover, .tlv-info:focus-visible { color: var(--accent); }
+  .tlv-info:focus-visible { box-shadow: 0 0 0 2px rgba(79,140,255,.35); }
+  #tlv-tooltip { position: fixed; z-index: 10000; top: 0; left: 0; max-width: 280px;
+    background: #1f2330; border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; color: var(--text); font-size: 12px; line-height: 1.5;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    text-transform: none; letter-spacing: normal; white-space: normal; word-break: break-word;
+    box-shadow: 0 6px 20px rgba(0,0,0,.45);
+    opacity: 0; transform: translateY(-4px); pointer-events: none;
+    transition: opacity .12s ease, transform .12s ease; }
+  #tlv-tooltip.show { opacity: 1; transform: translateY(0); }
+  .note { background: rgba(79,140,255,.08); border: 1px solid rgba(79,140,255,.25);
+    border-radius: 6px; padding: 10px 12px; font-size: 12px; color: var(--muted); margin-top: 12px; }
+  /* Drag & drop zone */
+  .dropzone { position: relative; margin-top: 4px; border: 2px dashed var(--border);
+    border-radius: 8px; background: #0f1115; padding: 22px 16px; text-align: center; cursor: pointer;
+    transition: border-color .18s ease, background-color .18s ease, transform .12s ease, box-shadow .18s ease; }
+  .dropzone:hover { border-color: #3a4150; }
+  .dropzone .dz-text { color: var(--muted); font-size: 13px; pointer-events: none; }
+  .dropzone .dz-text b { color: var(--text); }
+  .dropzone .dz-hint-release { display: none; color: var(--accent); font-weight: 600; }
+  .dropzone input[type="file"] { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  .dropzone.dragover { border-color: var(--accent); background: rgba(79,140,255,.1);
+    transform: scale(1.015); box-shadow: 0 0 0 3px rgba(79,140,255,.18), 0 0 18px rgba(79,140,255,.25); }
+  .dropzone.dragover .dz-hint-default { display: none; }
+  .dropzone.dragover .dz-hint-release { display: inline; }
+  /* Narrow screens: stack receipt over TLV (Change E) */
+  @media (max-width: 760px) {
+    .decoded { flex-direction: column; }
+    .decoded > #receiptOut { width: 100%; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>StraitsX PayNow QR — Render · Scan · Decode</h1>
+  <p>QA tool. Render a PayNow QR from the create-API output, then scan/decode it the way a banking app reads it. Staging/dev only.</p>
+</header>
+
+<main>
+
+  <!-- SECTION 1 -->
+  <section class="card">
+    <h2><span class="num">1</span>Render QR</h2>
+    <p class="hint">Paste <code>base64EncodedImage</code> to show the exact PNG the API returned, OR paste <code>qrCodeData</code> (the EMVCo/SGQR string) to generate a scannable QR locally — works even when ascii-toggle is ON and base64 is null.</p>
+
+    <label>base64EncodedImage (data URI or raw base64)</label>
+    <textarea id="b64in" placeholder="data:image/png;base64,iVBORw0... — or just the raw base64"></textarea>
+    <button onclick="renderB64()">Render PNG</button>
+
+    <label>qrCodeData (EMVCo string, starts with 000201…)</label>
+    <textarea id="emvin" placeholder="00020101021226..."></textarea>
+    <button class="secondary" onclick="renderEmv()">Generate scannable QR from string</button>
+
+    <div class="qr-out" id="qrOut"></div>
+    <div class="note">The QR encodes only the <b>public label</b> (proxy, amount, merchant, reference). It does not contain the internal <code>paynow_qr_codes.external_id</code>.</div>
+  </section>
+
+  <!-- SECTION 2 -->
+  <section class="card">
+    <h2><span class="num">2</span>Scan &amp; Decode (banking-app view)</h2>
+    <p class="hint">Upload a QR image, or paste the EMVCo string / base64. Shows what a payer's bank app would read: payee, amount, proxy, reference.</p>
+
+    <label>Upload QR image</label>
+    <div class="dropzone" id="dropzone">
+      <div class="dz-text">
+        <span class="dz-hint-default">Drag &amp; drop a QR image here, or <b>click to browse</b></span>
+        <span class="dz-hint-release">Release to upload</span>
+      </div>
+      <input type="file" id="filein" accept="image/*" onchange="decodeFile(event)">
+    </div>
+
+    <label>…or paste EMVCo string / base64</label>
+    <textarea id="decin" placeholder="00020101021226... — or base64 image data"></textarea>
+    <button onclick="decodePasted()">Decode</button>
+
+    <div class="decoded">
+      <div id="receiptOut"></div>
+      <div id="tlvWrap">
+        <div class="tlv-title">Raw EMVCo/SGQR fields (TLV)</div>
+        <div class="tlv-scroll"><div id="tlvOut"></div></div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<div id="toasts" aria-live="polite" aria-atomic="false"></div>
+
+<script>
+// ─── Toast notifications (top-right, auto-dismiss 30s) ───────────────
+function toast(message, type) {
+  const host = document.getElementById('toasts');
+  if (!host) return;
+  const el = document.createElement('div');
+  el.className = 'toast ' + (type || 'info');
+  const span = document.createElement('span');
+  span.className = 'tmsg';
+  span.textContent = message;
+  const x = document.createElement('button');
+  x.className = 'tx'; x.type = 'button'; x.setAttribute('aria-label', 'Dismiss');
+  x.textContent = '×';
+  el.appendChild(span);
+  el.appendChild(x);
+  host.appendChild(el);
+  // Force a reflow so the browser paints the final-geometry hidden state
+  // (opacity:0, shifted right) on frame 1 BEFORE .show is added. Without this
+  // the base + .show states can collapse into one paint, skipping the hidden
+  // frame; the double-rAF then flips only transform + opacity.
+  void el.offsetWidth;
+  requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('show')));
+  let timer = null;
+  const remove = () => {
+    if (timer) { clearTimeout(timer); timer = null; }
+    el.classList.remove('show');
+    el.classList.add('hide');
+    setTimeout(() => el.remove(), 250);
+  };
+  x.addEventListener('click', remove);
+  timer = setTimeout(remove, 30000); // stay until 30 seconds
+  return el;
+}
+
+// ─── Shared UX feedback helpers ──────────────────────────────────────
+// Brief pressed/working state on a button, then success/error flash.
+function withFeedback(btn, work) {
+  if (btn) { btn.disabled = true; btn.classList.add('working'); btn.dataset.label = btn.textContent; btn.textContent = 'Working…'; }
+  const start = Date.now();
+  const finish = (ok) => {
+    const elapsed = Date.now() - start;
+    const delay = Math.max(0, 300 - elapsed); // keep feedback visible ~300ms min
+    setTimeout(() => {
+      if (btn) {
+        btn.disabled = false; btn.classList.remove('working');
+        if (btn.dataset.label) { btn.textContent = btn.dataset.label; delete btn.dataset.label; }
+        btn.classList.add(ok ? 'flash-ok' : 'flash-err');
+        setTimeout(() => btn.classList.remove('flash-ok', 'flash-err'), 600);
+      }
+    }, delay);
+  };
+  // work() returns true (sync success), false (sync error), or null/undefined
+  // when it will finish asynchronously (then it must call the passed done()).
+  let settled = false;
+  const done = (ok) => { if (!settled) { settled = true; finish(ok); } };
+  const result = work(done);
+  if (result === true) done(true);
+  else if (result === false) done(false);
+}
+
+// Short toast confirming a download fired.
+function notifyDownload(filename) {
+  toast('Downloaded ' + filename, 'ok');
+}
+
+function dualInputNote(activeSource) {
+  const b64 = document.getElementById('b64in').value.trim();
+  const emv = document.getElementById('emvin').value.trim();
+  if (b64 && emv) {
+    return activeSource === 'base64'
+      ? 'Showing base64; qrCodeData ignored'
+      : 'Showing qrCodeData; base64 ignored';
+  }
+  return '';
+}
+
+// ─── Section 1: render ───────────────────────────────────────────────
+function renderB64() {
+  const btn = document.activeElement && document.activeElement.tagName === 'BUTTON' ? document.activeElement : null;
+  const raw = document.getElementById('b64in').value.trim();
+  const out = document.getElementById('qrOut');
+  if (!raw) { toast('Paste base64 first', 'err'); return; }
+  const src = raw.startsWith('data:') ? raw : 'data:image/png;base64,' + raw;
+  withFeedback(btn, (done) => {
+    const note = dualInputNote('base64');
+    const provenance = 'rendered from base64EncodedImage' + (note ? ' · ' + note : '');
+    out.innerHTML = '<img id="renderedImg" src="' + src + '" alt="QR">' +
+      '<div class="dl" style="color:var(--muted)">' + escapeHtml(provenance) + '</div>' +
+      '<a class="dl-btn" id="dlLink" download="paynow-qr.png">⬇ Download PNG</a>';
+    const img = document.getElementById('renderedImg');
+    img.onerror = () => { out.innerHTML = ''; toast('Invalid base64 image', 'err'); done(false); };
+    img.onload = () => {
+      const dl = document.getElementById('dlLink');
+      dl.href = src;
+      dl.addEventListener('click', () => notifyDownload('paynow-qr.png'));
+      toast('QR rendered', 'ok');
+      done(true);
+    };
+  });
+}
+
+function renderEmv() {
+  const btn = document.activeElement && document.activeElement.tagName === 'BUTTON' ? document.activeElement : null;
+  const str = document.getElementById('emvin').value.trim();
+  const out = document.getElementById('qrOut');
+  if (!str) { toast('Paste the EMVCo string first', 'err'); return; }
+  if (typeof QRCode === 'undefined') { toast('QR encoder not loaded (offline?)', 'err'); return; }
+  withFeedback(btn, (done) => {
+    try {
+      out.innerHTML = '';
+      const container = document.createElement('div');
+      out.appendChild(container);
+      // qrcodejs (davidshimjs) renders an <img>/<canvas> into the container.
+      new QRCode(container, { text: str, width: 300, height: 300, correctLevel: QRCode.CorrectLevel.M });
+      // qrcodejs inlines width/height/style on its generated <img>/<canvas>.
+      // Strip the inline sizing so the shared `.qr-out img, .qr-out canvas` CSS
+      // (max-width:300px, white bg, 10px padding, border-radius) wins and the
+      // output looks identical to the base64 <img> render.
+      container.querySelectorAll('img, canvas').forEach(el => {
+        el.style.width = '';
+        el.style.height = '';
+        el.style.maxWidth = '300px';
+      });
+      const caption = document.createElement('div');
+      caption.className = 'dl'; caption.style.color = 'var(--muted)';
+      const note = dualInputNote('qrCodeData');
+      caption.textContent = 'generated from qrCodeData' + (note ? ' · ' + note : '');
+      out.appendChild(caption);
+      const a = document.createElement('a');
+      a.className = 'dl-btn'; a.download = 'paynow-qr.png'; a.textContent = '⬇ Download PNG';
+      const canvas = container.querySelector('canvas');
+      const imgEl = container.querySelector('img');
+      if (canvas) { a.href = canvas.toDataURL('image/png'); }
+      else if (imgEl) { a.href = imgEl.src; }
+      a.addEventListener('click', () => notifyDownload('paynow-qr.png'));
+      out.appendChild(a);
+      toast('QR generated', 'ok');
+      return true;
+    } catch (err) {
+      toast('Encode failed: ' + (err && err.message ? err.message : err), 'err');
+      return false;
+    }
+  });
+}
+
+// ─── Section 2: scan & decode ────────────────────────────────────────
+// Core decode tail shared by file uploads and dragged image sources:
+// load an image SOURCE STRING (data URI or URL) → canvas → jsQR → parseEmv.
+function decodeImageSrc(src, opts) {
+  const crossOrigin = opts && opts.crossOrigin;
+  const img = new Image();
+  if (crossOrigin) img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    try {
+      const c = document.createElement('canvas');
+      c.width = img.width; c.height = img.height;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      const data = ctx.getImageData(0, 0, c.width, c.height);
+      const code = jsQR(data.data, c.width, c.height);
+      if (code) { toast('QR decoded', 'ok'); parseEmv(code.data); }
+      else { toast('No QR found', 'err'); }
+    } catch (err) {
+      // Cross-origin images taint the canvas, so getImageData throws.
+      toast("Can't read dragged image — drop the file instead", 'err');
+    }
+  };
+  img.onerror = () => { toast('Could not load the image', 'err'); };
+  img.src = src;
+}
+
+// Shared decode path for both the file input (onchange) and drag-and-drop.
+function handleImageFile(file) {
+  if (!file) return;
+  if (!file.type.startsWith('image/')) {
+    toast('Not an image', 'err'); return;
+  }
+  const reader = new FileReader();
+  reader.onload = ev => { decodeImageSrc(ev.target.result); };
+  reader.onerror = () => { toast('Could not load the image file', 'err'); };
+  reader.readAsDataURL(file);
+}
+
+function decodeFile(e) {
+  handleImageFile(e.target.files[0]);
+}
+
+// Drag-and-drop wiring for the upload zone.
+(function setupDropzone() {
+  const zone = document.getElementById('dropzone');
+  if (!zone) return;
+  const fileInput = document.getElementById('filein');
+  const prevent = e => { e.preventDefault(); e.stopPropagation(); };
+  // Clicking anywhere on the zone opens the native file picker. The hidden
+  // input is a descendant, so its own click bubbles back here — only forward
+  // when the target is NOT the input, to avoid infinite recursion / double-open.
+  zone.addEventListener('click', e => {
+    if (fileInput && e.target !== fileInput) fileInput.click();
+  });
+  // Stop the browser from navigating away if a file is dropped outside the zone.
+  ['dragover', 'drop'].forEach(type => window.addEventListener(type, e => e.preventDefault()));
+  ['dragenter', 'dragover'].forEach(type => zone.addEventListener(type, e => {
+    prevent(e); zone.classList.add('dragover');
+  }));
+  ['dragleave', 'dragend'].forEach(type => zone.addEventListener(type, e => {
+    prevent(e); zone.classList.remove('dragover');
+  }));
+  zone.addEventListener('drop', e => {
+    prevent(e); zone.classList.remove('dragover');
+    const dt = e.dataTransfer;
+    // Case 1: OS file drag — populates .files.
+    if (dt && dt.files && dt.files[0]) { handleImageFile(dt.files[0]); return; }
+    // Case 2: in-page <img> drag (e.g. Section-1 rendered QR) — no File,
+    // instead a URL/data-URI arrives via uri-list/plain/html.
+    let src = (dt && (dt.getData('text/uri-list') || dt.getData('text/plain'))) || '';
+    if (!src && dt) {
+      const html = dt.getData('text/html') || '';
+      if (html) {
+        const m = html.match(/<img[^>]*\ssrc\s*=\s*["']([^"']+)["']/i);
+        if (m) src = m[1];
+      }
+    }
+    src = src.trim();
+    if (src && (/^data:image\//i.test(src) || /^https?:\/\//i.test(src))) {
+      // Same-page data: URIs decode offline; cross-origin URLs may taint the
+      // canvas (decodeImageSrc catches that and shows a friendly message).
+      decodeImageSrc(src, { crossOrigin: /^https?:\/\//i.test(src) });
+      return;
+    }
+    // Case 3: nothing usable.
+    toast('Nothing to decode — drop a QR image', 'err');
+  });
+})();
+
+function decodePasted() {
+  const str = document.getElementById('decin').value.trim();
+  if (!str) { toast('Paste something first', 'err'); return; }
+  if (/^0002/.test(str) && str.length > 20) { parseEmv(str); toast('EMVCo string parsed', 'ok'); return; }
+  const src = str.startsWith('data:') ? str : 'data:image/png;base64,' + str;
+  decodeImageSrc(src);
+}
+
+// EMVCo / SGQR TLV: 2-digit tag + 2-digit length + value.
+const EMV_TAGS = {
+  '00': 'Payload Format Indicator', '01': 'Point of Initiation',
+  '26': 'Merchant Account Info (PayNow)', '27': 'Merchant Account Info',
+  '52': 'Merchant Category Code', '53': 'Transaction Currency', '54': 'Transaction Amount',
+  '58': 'Country Code', '59': 'Merchant Name', '60': 'Merchant City', '62': 'Additional Data', '63': 'CRC',
+};
+const EMV_26_SUB = { '00': 'GUID (SG.PAYNOW)', '01': 'Proxy Type', '02': 'Proxy Value', '03': 'Amount editable', '04': 'Expiry' };
+const EMV_62_SUB = { '01': 'Bill Number', '05': 'Reference Label', '07': 'Terminal Label', '08': 'Purpose' };
+const PROXY_TYPE = { '0': 'Mobile', '2': 'UEN', '3': 'VPA' };
+const POI = { '11': 'Static (reusable)', '12': 'Dynamic (one-off)' };
+const CCY = { '702': 'SGD', '840': 'USD', '360': 'IDR', '704': 'VND', '458': 'MYR' };
+
+// Hover tooltips for specific TLV rows. Keyed by main tag, or "26-01"/"26-03"
+// for the PayNow sub-tags.
+const TLV_INFO = {
+  '00': 'EMVCo QR format version. Always 01.',
+  '01': 'QR type. 11 = static/reusable (payer enters amount). 12 = dynamic/one-off (fixed amount).',
+  '52': 'ISO 18245 merchant business-type code. 0000 = not specified.',
+  '53': 'ISO 4217 numeric currency code. 702=SGD, 840=USD, 360=IDR, 704=VND, 458=MYR.',
+  '26-01': 'PayNow proxy type. 0 = Mobile, 2 = UEN, 3 = VPA. (No 1.)',
+  '26-03': '0 = fixed amount. 1 = payer may edit the amount.',
+};
+
+// Render an ⓘ marker for the given info key, or '' if none. The tip text is
+// carried in a data- attribute; the actual popup is a single body-level fixed
+// element wired up in attachTlvTooltips() (so it escapes the .tlv-scroll clip).
+function infoMarker(key) {
+  const text = TLV_INFO[key];
+  if (!text) return '';
+  return `<span class="tlv-info" tabindex="0" role="img" aria-label="${escapeHtml(text)}" data-tip="${escapeHtml(text)}">ⓘ</span>`;
+}
+
+// Single shared, lazily-created body-level tooltip element.
+let _tlvTooltipEl = null;
+function getTlvTooltip() {
+  if (!_tlvTooltipEl) {
+    _tlvTooltipEl = document.createElement('div');
+    _tlvTooltipEl.id = 'tlv-tooltip';
+    _tlvTooltipEl.setAttribute('role', 'tooltip');
+    document.body.appendChild(_tlvTooltipEl);
+  }
+  return _tlvTooltipEl;
+}
+
+// Position + show the shared tooltip next to a marker, clamped to the viewport.
+function showTlvTooltip(marker) {
+  const tip = getTlvTooltip();
+  tip.textContent = marker.dataset.tip || '';
+  // Make it measurable (still invisible) before reading its size.
+  tip.style.display = 'block';
+  tip.classList.remove('show');
+  const MARGIN = 8, GAP = 6;
+  const rect = marker.getBoundingClientRect();
+  const tw = tip.offsetWidth, th = tip.offsetHeight;
+  const vw = document.documentElement.clientWidth;
+  const vh = document.documentElement.clientHeight;
+  // Default: below-right of the marker.
+  let left = rect.left;
+  let top = rect.bottom + GAP;
+  // Clamp horizontally so it stays fully visible.
+  if (left + tw > vw - MARGIN) left = vw - MARGIN - tw;
+  if (left < MARGIN) left = MARGIN;
+  // Flip above if it would overflow the bottom.
+  if (top + th > vh - MARGIN) {
+    const above = rect.top - GAP - th;
+    top = above >= MARGIN ? above : Math.max(MARGIN, vh - MARGIN - th);
+  }
+  tip.style.left = left + 'px';
+  tip.style.top = top + 'px';
+  // Trigger fade-in on the next frame.
+  requestAnimationFrame(() => tip.classList.add('show'));
+}
+
+function hideTlvTooltip() {
+  if (!_tlvTooltipEl) return;
+  _tlvTooltipEl.classList.remove('show');
+}
+
+// Wire hover + keyboard-focus listeners on every ⓘ marker in a container.
+// Call AFTER setting the container's innerHTML.
+function attachTlvTooltips(container) {
+  if (!container) return;
+  container.querySelectorAll('.tlv-info').forEach(marker => {
+    marker.addEventListener('mouseenter', () => showTlvTooltip(marker));
+    marker.addEventListener('mouseleave', hideTlvTooltip);
+    marker.addEventListener('focus', () => showTlvTooltip(marker));
+    marker.addEventListener('blur', hideTlvTooltip);
+  });
+}
+
+function tlv(str) {
+  const out = []; let i = 0;
+  while (i + 4 <= str.length) {
+    const tag = str.substr(i, 2);
+    const len = parseInt(str.substr(i + 2, 2), 10);
+    if (isNaN(len)) break;
+    out.push({ tag, len, val: str.substr(i + 4, len) });
+    i += 4 + len;
+  }
+  return out;
+}
+
+function parseEmv(str) {
+  const fields = tlv(str);
+  const get = t => (fields.find(f => f.tag === t) || {}).val;
+  const merchantInfo = tlv(get('26') || get('27') || '');
+  const subGet = (subs, t) => (subs.find(f => f.tag === t) || {}).val;
+  const addl = tlv(get('62') || '');
+
+  const payee = get('59') || '—';
+  const amount = get('54');
+  const ccy = get('53');
+  const poi = get('01');
+  const proxyType = subGet(merchantInfo, '01');
+  const proxyValue = subGet(merchantInfo, '02');
+  const amountEditable = subGet(merchantInfo, '03');
+  const expiry = subGet(merchantInfo, '04');
+  const reference = subGet(addl, '05') || subGet(addl, '01');
+
+  // CRC check
+  const crcField = fields.find(f => f.tag === '63');
+  let crcHtml = '';
+  if (crcField) {
+    const calc = crc16(str.substring(0, str.length - 4));
+    const ok = calc.toUpperCase() === crcField.val.toUpperCase();
+    crcHtml = ok ? '<span class="flag ok">CRC valid</span>' : '<span class="flag warn">CRC mismatch</span>';
+  }
+
+  const amtDisplay = amount ? `${CCY[ccy] || ccy || ''} ${amount}`.trim() : (amountEditable === '1' ? 'Payer enters amount' : '—');
+
+  const r = (k, v) => v ? `<div class="r"><span class="k">${k}</span><span class="v">${escapeHtml(v)}</span></div>` : '';
+  document.getElementById('receiptOut').innerHTML = `
+    <div class="receipt">
+      <div class="scanbar"><span class="dot"></span>Scan result</div>
+      <div class="top">
+        <div class="brand">PayNow</div>
+        <div class="label">Pay to</div>
+        <div class="payee">${escapeHtml(payee)} ${crcHtml}</div>
+        <div class="amount">${escapeHtml(amtDisplay)}</div>
+      </div>
+      <div class="rows">
+        ${r('Proxy type', PROXY_TYPE[proxyType] || proxyType)}
+        ${r('Proxy value', proxyValue)}
+        ${r('QR type', POI[poi] || poi)}
+        ${r('Reference', reference)}
+        ${r('Expiry', formatExpiry(expiry))}
+        ${r('Country', get('58'))}
+        ${r('Currency', CCY[ccy] || ccy)}
+      </div>
+    </div>`;
+
+  // raw TLV table
+  let rows = '';
+  fields.forEach(f => {
+    const name = EMV_TAGS[f.tag] || 'Unknown';
+    if (f.tag === '26' || f.tag === '27') {
+      rows += `<tr><td class="tag">${f.tag}</td><td>${name}</td><td>(nested)</td></tr>`;
+      merchantInfo.forEach(s => rows += `<tr><td></td><td class="sub">↳ ${s.tag} ${EMV_26_SUB[s.tag] || ''}${infoMarker('26-' + s.tag)}</td><td>${escapeHtml(s.val)}</td></tr>`);
+    } else if (f.tag === '62') {
+      rows += `<tr><td class="tag">${f.tag}</td><td>${name}</td><td>(nested)</td></tr>`;
+      addl.forEach(s => rows += `<tr><td></td><td class="sub">↳ ${s.tag} ${EMV_62_SUB[s.tag] || ''}</td><td>${escapeHtml(s.val)}</td></tr>`);
+    } else {
+      rows += `<tr><td class="tag">${f.tag}</td><td>${name}${infoMarker(f.tag)}</td><td>${escapeHtml(f.val)}</td></tr>`;
+    }
+  });
+  document.getElementById('tlvOut').innerHTML = '<table class="tlv">' + rows + '</table>';
+  attachTlvTooltips(document.getElementById('tlvOut'));
+}
+
+function escapeHtml(s) { return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+// Format an EMVCo expiry timestamp for human display.
+// 14 digits YYYYMMDDHHMMSS → "YYYY-MM-DD HH:MM:SS"
+// 12 digits YYYYMMDDHHMM   → "YYYY-MM-DD HH:MM"
+// anything else → returned unchanged.
+function formatExpiry(v) {
+  if (!v) return v;
+  const s = String(v);
+  if (/^\d{14}$/.test(s)) {
+    return `${s.substr(0,4)}-${s.substr(4,2)}-${s.substr(6,2)} ${s.substr(8,2)}:${s.substr(10,2)}:${s.substr(12,2)}`;
+  }
+  if (/^\d{12}$/.test(s)) {
+    return `${s.substr(0,4)}-${s.substr(4,2)}-${s.substr(6,2)} ${s.substr(8,2)}:${s.substr(10,2)}`;
+  }
+  return s;
+}
+
+// CRC-16/CCITT-FALSE, poly 0x1021, init 0xFFFF — SGQR spec (tag 63).
+function crc16(str) {
+  let crc = 0xFFFF;
+  for (let i = 0; i < str.length; i++) {
+    crc ^= str.charCodeAt(i) << 8;
+    for (let j = 0; j < 8; j++) {
+      crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) : (crc << 1);
+      crc &= 0xFFFF;
+    }
+  }
+  return crc.toString(16).padStart(4, '0').toUpperCase();
+}
+</script>
+</body>
+</html>
