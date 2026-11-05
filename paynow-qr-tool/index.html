@@ -4,35 +4,79 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>StraitsX PayNow QR — Render · Scan · Decode</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800;900&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <style>
   :root {
-    --bg: #0f1115; --panel: #181b22; --border: #2a2f3a; --text: #e6e8ec;
-    --muted: #8b93a1; --accent: #4f8cff; --ok: #3ecf8e; --warn: #f0b429; --err: #ff5c5c;
-    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    /* Light slate + green palette (reference: swift-aba-converter) */
+    --bg: #ffffff;
+    --slate-950: #020618; --slate-900: #0f172b; --slate-700: #314158;
+    --slate-600: #45556c; --slate-500: #62748e; --slate-400: #90a1b9;
+    --slate-300: #cad5e2; --slate-200: #e2e8f0; --slate-100: #f1f5f9; --slate-50: #f8fafc;
+    --indigo-600: #00B378; --indigo-500: #00C98A; --indigo-700: #009767;
+    --indigo-100: #b8ecd9; --indigo-50: #e6f8f1; --indigo-200: #b8ecd9;
+    --emerald: #009767; --emerald-50: #ecfdf5;
+    --amber: #b45309; --amber-50: #fffbeb;
+    --text: #020618;
+    --muted: #90a1b9;        /* slate-400 — referenced by JS inline styles */
+    --accent: #00B378;       /* StraitsX green — kept in case JS references it */
+    --ok: #009767; --warn: #b45309; --err: #e11d48;
+    --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.5; }
-  header { padding: 20px 24px; border-bottom: 1px solid var(--border); }
-  header h1 { margin: 0; font-size: 18px; }
-  header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
-  main { max-width: 900px; margin: 0 auto; padding: 24px; display: grid; gap: 20px; }
-  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 20px; }
-  .card h2 { margin: 0 0 4px; font-size: 15px; }
-  .card h2 .num { display: inline-block; width: 22px; height: 22px; line-height: 22px;
-    text-align: center; background: var(--accent); color: #fff; border-radius: 50%; font-size: 12px; margin-right: 8px; }
-  .card .hint { color: var(--muted); font-size: 12px; margin: 0 0 16px; }
-  label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 4px; }
-  input, textarea, select { width: 100%; background: #0f1115; border: 1px solid var(--border);
-    color: var(--text); border-radius: 6px; padding: 8px 10px; font-size: 13px; font-family: var(--mono); }
-  textarea { resize: vertical; min-height: 60px; }
-  button { background: var(--accent); color: #fff; border: 0; border-radius: 6px;
-    padding: 9px 16px; font-size: 13px; font-weight: 600; cursor: pointer; margin-top: 14px; margin-right: 8px;
+  html, body { min-height: 100vh; }
+  body { margin: 0; background: var(--bg); color: var(--slate-600);
+    font-family: var(--sans); line-height: 1.5; overflow-x: hidden; position: relative; }
+  /* Soft radial glow anchored top-center, behind all content */
+  .bg-glow { position: absolute; top: 0; left: 0; right: 0; height: 540px; z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(circle at 50% -10%, #b8ecd9 0%, #e6f8f1 34%, transparent 72%); }
+  /* Centered hero */
+  header { position: relative; z-index: 1; text-align: center;
+    max-width: 768px; margin: 0 auto; padding: 72px 24px 24px; }
+  header h1 { margin: 0; font-weight: 900; letter-spacing: -0.04em; color: var(--slate-950);
+    font-size: clamp(2.25rem, 5vw, 3.75rem); line-height: 1.05; }
+  header p { margin: 20px auto 0; color: var(--slate-600); font-size: 1.125rem;
+    max-width: 42rem; line-height: 1.7; }
+  .trust-badge { position: absolute; top: 16px; left: 20px; z-index: 2;
+    display: inline-flex; align-items: center; justify-content: flex-start; gap: 6px;
+    font-size: 0.8125rem; font-weight: 500; color: var(--slate-500); }
+  .trust-badge svg { color: #00B378; flex-shrink: 0; vertical-align: middle; }
+  main { position: relative; z-index: 1; max-width: 768px; margin: 0 auto;
+    padding: 24px; display: grid; gap: 24px; }
+  .card { background: #ffffff; border: 1px solid var(--slate-200); border-radius: 16px; padding: 24px;
+    box-shadow: 0 20px 25px -5px rgba(15,23,43,.05), 0 8px 10px -6px rgba(15,23,43,.05); }
+  .card h2 { margin: 0 0 6px; font-size: 1.125rem; font-weight: 700; color: var(--slate-900);
+    display: flex; align-items: center; }
+  .card h2 .num { display: inline-grid; place-items: center; width: 28px; height: 28px;
+    text-align: center; background: var(--indigo-600); color: #fff; border-radius: 8px;
+    font-size: 14px; font-weight: 700; margin-right: 10px; }
+  .card .hint { color: var(--slate-500); font-size: 0.875rem; line-height: 1.6; margin: 0 0 18px; }
+  .card code { background: var(--slate-100); color: var(--slate-700); padding: 1px 5px;
+    border-radius: 5px; font-family: var(--mono); font-size: 0.85em; }
+  label { display: block; font-size: 0.8125rem; color: var(--slate-500); font-weight: 500;
+    letter-spacing: .01em; margin: 16px 0 6px; }
+  input, select { width: 100%; height: 48px; background: #fff; border: 1px solid var(--slate-200);
+    color: var(--slate-950); border-radius: 12px; padding: 0 16px; font-size: 13px; font-family: var(--sans);
+    box-shadow: 0 1px 2px rgba(15,23,43,.05); transition: border-color .15s ease, box-shadow .15s ease; }
+  textarea { width: 100%; background: #fff; border: 1px solid var(--slate-200);
+    color: var(--slate-950); border-radius: 12px; padding: 12px 16px; font-size: 13px; font-family: var(--mono);
+    box-shadow: 0 1px 2px rgba(15,23,43,.05); resize: vertical; min-height: 80px; line-height: 1.5;
+    transition: border-color .15s ease, box-shadow .15s ease; }
+  input::placeholder, textarea::placeholder { color: var(--slate-400); }
+  input:focus, textarea:focus, select:focus { outline: none; border-color: var(--indigo-500);
+    box-shadow: 0 0 0 4px var(--indigo-100); }
+  button { background: var(--indigo-600); color: #fff; border: 0; border-radius: 12px;
+    padding: 10px 20px; font-size: 0.9375rem; font-weight: 600; font-family: var(--sans); cursor: pointer;
+    margin-top: 14px; margin-right: 8px;
     transition: transform .08s ease, background-color .2s ease, opacity .2s ease; }
-  button.secondary { background: #2a2f3a; }
-  button:hover { opacity: .9; }
+  button:hover { background: var(--indigo-700); }
+  button.secondary { background: var(--indigo-50); color: #00875c; border: 1px solid var(--indigo-100); }
+  button.secondary:hover { background: #d1f2e5; }
   button:active { transform: translateY(1px); }
   button[disabled] { cursor: default; opacity: .7; }
   button.working { opacity: .7; }
@@ -44,9 +88,9 @@
     width: 300px; pointer-events: none; }
   .toast { box-sizing: border-box; pointer-events: auto; display: flex; align-items: flex-start; gap: 10px;
     width: 300px;
-    background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--muted);
-    border-radius: 8px; padding: 12px 14px; font-size: 13px; color: var(--text);
-    box-shadow: 0 6px 20px rgba(0,0,0,.4);
+    background: #fff; border: 1px solid var(--slate-200); border-left: 3px solid var(--slate-400);
+    border-radius: 12px; padding: 12px 14px; font-size: 13px; color: var(--slate-700);
+    box-shadow: 0 10px 25px rgba(15,23,43,.1);
     /* Geometry (box-sizing, width, padding, border incl. 3px left accent) is set
        on the base class so it's final from frame 1. Only transform + opacity are
        animated — never box-size properties. */
@@ -54,37 +98,40 @@
     transition: transform .22s ease, opacity .22s ease; }
   .toast.show { opacity: 1; transform: none; }
   .toast.hide { opacity: 0; transform: translateX(16px); }
-  .toast.ok { border-left-color: var(--ok); }
+  .toast.ok { border-left-color: var(--emerald); }
   .toast.err { border-left-color: var(--err); }
-  .toast.info { border-left-color: var(--accent); }
+  .toast.info { border-left-color: var(--indigo-500); }
   .toast .tmsg { flex: 1; word-break: break-word; }
-  .toast.ok .tmsg { color: var(--ok); }
+  .toast.ok .tmsg { color: var(--emerald); }
   .toast.err .tmsg { color: var(--err); }
-  .toast .tx { background: none; border: 0; color: var(--muted); cursor: pointer;
+  .toast .tx { background: none; border: 0; color: var(--slate-400); cursor: pointer;
     font-size: 15px; line-height: 1; padding: 0; margin: 0; font-weight: 700; transition: color .15s ease; }
-  .toast .tx:hover { color: var(--text); opacity: 1; }
-  .qr-out { margin-top: 16px; text-align: center; }
-  .qr-out img, .qr-out canvas { max-width: 300px; background: #fff; padding: 10px; border-radius: 8px; }
+  .toast .tx:hover { color: var(--slate-700); opacity: 1; background: none; }
+  .qr-out { margin-top: 16px; text-align: center; display: flex; flex-direction: column; align-items: center; }
+  .qr-out > div { display: flex; justify-content: center; width: 100%; }
+  .qr-out img, .qr-out canvas { max-width: 300px; background: #fff; padding: 10px;
+    border: 1px solid var(--slate-200); border-radius: 12px; display: block; margin: 0 auto; }
   .qr-out .dl { display: block; margin-top: 10px; font-size: 12px; }
   /* Download control styled as an app button (secondary variant) */
-  .qr-out a.dl-btn { display: inline-block; margin-top: 12px; background: #2a2f3a; color: #fff;
-    border: 0; border-radius: 6px; padding: 9px 16px; font-size: 13px; font-weight: 600;
-    cursor: pointer; text-decoration: none;
+  .qr-out a.dl-btn { display: inline-block; margin-top: 12px; background: var(--indigo-50); color: #009767;
+    border: 1px solid var(--indigo-100); border-radius: 12px; padding: 10px 20px; font-size: 0.9375rem;
+    font-weight: 600; cursor: pointer; text-decoration: none;
     transition: transform .08s ease, background-color .2s ease, opacity .2s ease; }
-  .qr-out a.dl-btn:hover { opacity: .9; }
+  .qr-out a.dl-btn:hover { background: #d1f2e5; }
   .qr-out a.dl-btn:active { transform: translateY(1px); }
   /* Banking-app style receipt + side-by-side TLV layout (Change B + E) */
   .decoded { display: flex; gap: 16px; align-items: flex-start; margin-top: 16px; }
   .decoded > #receiptOut { flex: 0 0 auto; width: 420px; max-width: 100%; }
   .decoded > #tlvWrap { flex: 1 1 0; min-width: 0; margin-top: 0; }
   .decoded #tlvWrap .tlv-scroll { overflow-x: auto; }
-  .receipt { background: var(--panel); border: 1px solid var(--border); border-radius: 16px;
-    overflow: hidden; max-width: 420px; margin: 0 auto; box-shadow: 0 8px 24px rgba(0,0,0,.35); }
+  .receipt { background: #fff; border: 1px solid var(--slate-200); border-radius: 16px;
+    overflow: hidden; max-width: 420px; margin: 0 auto;
+    box-shadow: 0 20px 25px -5px rgba(15,23,43,.05), 0 8px 10px -6px rgba(15,23,43,.05); }
   .receipt .scanbar { display: flex; align-items: center; gap: 8px; padding: 8px 16px;
-    background: rgba(79,140,255,.08); border-bottom: 1px solid var(--border);
-    font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
-  .receipt .scanbar .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
-  .receipt .top { background: linear-gradient(140deg, #3a2f78 0%, #4f8cff 100%);
+    background: var(--indigo-50); border-bottom: 1px solid var(--slate-200);
+    font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--slate-500); }
+  .receipt .scanbar .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--emerald); }
+  .receipt .top { background: linear-gradient(140deg, #00B378 0%, #00C98A 100%);
     padding: 20px 18px; position: relative; border-bottom: 1px solid rgba(255,255,255,.12); }
   .receipt .top .brand { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: .5px;
     text-transform: uppercase; color: #fff; background: rgba(255,255,255,.18);
@@ -94,53 +141,53 @@
   .receipt .top .amount { font-size: 30px; font-weight: 800; color: #fff; margin-top: 10px; letter-spacing: -.5px; }
   .receipt .rows { padding: 6px 18px 14px; }
   .receipt .r { display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
-    padding: 11px 6px; border-bottom: 1px solid var(--border); font-size: 13px; border-radius: 6px;
+    padding: 11px 6px; border-bottom: 1px solid var(--slate-200); font-size: 13px; border-radius: 6px;
     transition: background-color .12s ease; }
-  .receipt .r:hover { background: rgba(255,255,255,.03); }
+  .receipt .r:hover { background: var(--slate-50); }
   .receipt .r:last-child { border-bottom: 0; }
-  .receipt .r .k { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .3px; white-space: nowrap; }
-  .receipt .r .v { font-family: var(--mono); text-align: right; word-break: break-all; color: var(--text); }
+  .receipt .r .k { color: var(--slate-500); font-size: 12px; text-transform: uppercase; letter-spacing: .3px; white-space: nowrap; }
+  .receipt .r .v { font-family: var(--mono); text-align: right; word-break: break-all; color: var(--slate-950); }
   .flag { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 4px; margin-left: 6px; vertical-align: middle; }
-  .flag.ok { background: rgba(62,207,142,.15); color: var(--ok); }
-  .flag.warn { background: rgba(240,180,41,.15); color: var(--warn); }
-  .tlv-title { color: var(--muted); font-size: 12px; margin-top: 0; }
+  .flag.ok { background: var(--emerald-50); color: var(--emerald); }
+  .flag.warn { background: var(--amber-50); color: var(--amber); }
+  .tlv-title { color: var(--slate-500); font-size: 12px; margin-top: 0; font-weight: 500; }
   .tlv { width: 100%; border-collapse: collapse; font-size: 12px; font-family: var(--mono); margin-top: 10px; }
-  .tlv td { padding: 5px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
-  .tlv td.tag { color: var(--accent); }
-  .tlv td.sub { color: var(--muted); }
+  .tlv td { padding: 5px 8px; border-bottom: 1px solid var(--slate-200); vertical-align: top; color: var(--slate-700); }
+  .tlv td.tag { color: var(--indigo-600); }
+  .tlv td.sub { color: var(--slate-400); }
   /* Info marker on TLV field labels — subtle muted circle-i, accent on hover/focus.
      The popup itself is a single body-level fixed element (#tlv-tooltip) so it
      can never be clipped by the .tlv-scroll horizontal-overflow container. */
   .tlv-info { display: inline-flex; align-items: center; justify-content: center;
     width: 14px; height: 14px; margin-left: 6px; border-radius: 50%; cursor: help;
-    color: var(--muted); font-size: 11px; font-style: normal; line-height: 1;
+    color: var(--slate-400); font-size: 11px; font-style: normal; line-height: 1;
     vertical-align: middle; outline: none;
     transition: color .15s ease; }
-  .tlv-info:hover, .tlv-info:focus-visible { color: var(--accent); }
-  .tlv-info:focus-visible { box-shadow: 0 0 0 2px rgba(79,140,255,.35); }
+  .tlv-info:hover, .tlv-info:focus-visible { color: var(--indigo-500); }
+  .tlv-info:focus-visible { box-shadow: 0 0 0 2px var(--indigo-100); }
   #tlv-tooltip { position: fixed; z-index: 10000; top: 0; left: 0; max-width: 280px;
-    background: #1f2330; border: 1px solid var(--border); border-radius: 8px;
-    padding: 10px 12px; color: var(--text); font-size: 12px; line-height: 1.5;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #fff; border: 1px solid var(--slate-200); border-radius: 10px;
+    padding: 10px 12px; color: var(--slate-700); font-size: 12px; line-height: 1.5;
+    font-family: var(--sans);
     text-transform: none; letter-spacing: normal; white-space: normal; word-break: break-word;
-    box-shadow: 0 6px 20px rgba(0,0,0,.45);
+    box-shadow: 0 10px 25px rgba(15,23,43,.1);
     opacity: 0; transform: translateY(-4px); pointer-events: none;
     transition: opacity .12s ease, transform .12s ease; }
   #tlv-tooltip.show { opacity: 1; transform: translateY(0); }
-  .note { background: rgba(79,140,255,.08); border: 1px solid rgba(79,140,255,.25);
-    border-radius: 6px; padding: 10px 12px; font-size: 12px; color: var(--muted); margin-top: 12px; }
+  .note { background: var(--indigo-50); border: 1px solid var(--indigo-200);
+    border-radius: 12px; padding: 12px 14px; font-size: 12px; color: var(--slate-500); margin-top: 14px; line-height: 1.6; }
   /* Drag & drop zone */
-  .dropzone { position: relative; margin-top: 4px; border: 2px dashed var(--border);
-    border-radius: 8px; background: #0f1115; padding: 22px 16px; text-align: center; cursor: pointer;
+  .dropzone { position: relative; margin-top: 4px; border: 2px dashed var(--slate-300);
+    border-radius: 12px; background: var(--slate-50); padding: 22px 16px; text-align: center; cursor: pointer;
     transition: border-color .18s ease, background-color .18s ease, transform .12s ease, box-shadow .18s ease; }
-  .dropzone:hover { border-color: #3a4150; }
-  .dropzone .dz-text { color: var(--muted); font-size: 13px; pointer-events: none; }
-  .dropzone .dz-text b { color: var(--text); }
-  .dropzone .dz-hint-release { display: none; color: var(--accent); font-weight: 600; }
+  .dropzone:hover { border-color: var(--slate-400); }
+  .dropzone .dz-text { color: var(--slate-500); font-size: 13px; pointer-events: none; }
+  .dropzone .dz-text b { color: var(--slate-900); }
+  .dropzone .dz-hint-release { display: none; color: var(--indigo-600); font-weight: 600; }
   .dropzone input[type="file"] { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
     overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
-  .dropzone.dragover { border-color: var(--accent); background: rgba(79,140,255,.1);
-    transform: scale(1.015); box-shadow: 0 0 0 3px rgba(79,140,255,.18), 0 0 18px rgba(79,140,255,.25); }
+  .dropzone.dragover { border-color: var(--indigo-500); background: var(--indigo-50);
+    transform: scale(1.015); box-shadow: 0 0 0 3px var(--indigo-100), 0 0 18px rgba(0,179,120,.25); }
   .dropzone.dragover .dz-hint-default { display: none; }
   .dropzone.dragover .dz-hint-release { display: inline; }
   /* Narrow screens: stack receipt over TLV (Change E) */
@@ -151,8 +198,10 @@
 </style>
 </head>
 <body>
+<div class="bg-glow" aria-hidden="true"></div>
+<div class="trust-badge"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>Runs entirely in your browser — nothing is sent anywhere</div>
 <header>
-  <h1>StraitsX PayNow QR — Render · Scan · Decode</h1>
+  <h1>PayNow QR<br>Render · Scan · Decode</h1>
   <p>QA tool. Render a PayNow QR from the create-API output, then scan/decode it the way a banking app reads it. Staging/dev only.</p>
 </header>
 
@@ -161,7 +210,7 @@
   <!-- SECTION 1 -->
   <section class="card">
     <h2><span class="num">1</span>Render QR</h2>
-    <p class="hint">Paste <code>base64EncodedImage</code> to show the exact PNG the API returned, OR paste <code>qrCodeData</code> (the EMVCo/SGQR string) to generate a scannable QR locally — works even when ascii-toggle is ON and base64 is null.</p>
+    <p class="hint">Paste <code>base64EncodedImage</code> for the exact API PNG, or <code>qrCodeData</code> (EMVCo string) to generate the QR locally.</p>
 
     <label>base64EncodedImage (data URI or raw base64)</label>
     <textarea id="b64in" placeholder="data:image/png;base64,iVBORw0... — or just the raw base64"></textarea>
@@ -195,7 +244,7 @@
 
     <div class="decoded">
       <div id="receiptOut"></div>
-      <div id="tlvWrap">
+      <div id="tlvWrap" style="display:none">
         <div class="tlv-title">Raw EMVCo/SGQR fields (TLV)</div>
         <div class="tlv-scroll"><div id="tlvOut"></div></div>
       </div>
@@ -615,6 +664,7 @@ function parseEmv(str) {
     }
   });
   document.getElementById('tlvOut').innerHTML = '<table class="tlv">' + rows + '</table>';
+  document.getElementById('tlvWrap').style.display = '';
   attachTlvTooltips(document.getElementById('tlvOut'));
 }
 
